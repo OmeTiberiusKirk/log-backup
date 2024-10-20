@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
@@ -13,9 +14,9 @@ import (
 
 const PATH_OF_LOGS = "C:/Apache24/logs/"
 const NAME_OF_ERR_LOG = "error"
-const NAME_OF_ACC_LOG = "access"
+const NAME_OF_REQUEST_LOG = "ssl_request"
 const PATH_OF_ERR_LOG = PATH_OF_LOGS + NAME_OF_ERR_LOG + ".log"
-const PATH_OF_ACC_LOG = PATH_OF_LOGS + NAME_OF_ACC_LOG + ".log"
+const PATH_OF_REQUEST_LOG = PATH_OF_LOGS + NAME_OF_REQUEST_LOG + ".log"
 const DIR_FORMAT = "%[1]d/%[2]d/%[3]d"
 
 func main() {
@@ -23,8 +24,7 @@ func main() {
 	// create a scheduler
 	s, err := gocron.NewScheduler()
 
-	handleLogs()
-	os.Exit(0)
+	// handleLogs()
 
 	if err != nil {
 		log.Fatal(err)
@@ -33,7 +33,7 @@ func main() {
 	// add a job to the scheduler
 	j, err := s.NewJob(
 		gocron.CronJob(
-			"* 0 * * *",
+			"0 0 * * *",
 			false,
 		),
 		gocron.NewTask(
@@ -68,28 +68,26 @@ func main() {
 func handleLogs() {
 	_, err := checkExistence(PATH_OF_ERR_LOG)
 	check(err)
-	_, err = checkExistence(PATH_OF_ACC_LOG)
+	_, err = checkExistence(PATH_OF_REQUEST_LOG)
 	check(err)
 
-	fmt.Println(PATH_OF_ERR_LOG)
-	compressFile(PATH_OF_ERR_LOG)
+	cmd := exec.Command("httpd", "-k", "stop")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Println("httpd stopped.")
+	}
 
-	// cmd := exec.Command("httpd", "-k", "stop")
-	// if err := cmd.Run(); err != nil {
-	// 	log.Fatal(err)
-	// } else {
-	// 	fmt.Println("httpd stopped.")
-	// }
+	compressFiles()
+	createDateDirectories()
+	moveZipFile()
 
-	// createDateDirectories()
-	// moveLogs()
-
-	// cmd = exec.Command("httpd", "-k", "start")
-	// if err := cmd.Run(); err != nil {
-	// 	log.Fatal(err)
-	// } else {
-	// 	fmt.Println("httpd started.")
-	// }
+	cmd = exec.Command("httpd", "-k", "start")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Println("httpd started.")
+	}
 }
 
 func checkExistence(path string) (bool, error) {
@@ -122,55 +120,61 @@ func check(e error) {
 	}
 }
 
-func moveLogs() {
+func moveZipFile() {
 	y, m, d := getDate()
-	newLocation := fmt.Sprintf(PATH_OF_LOGS+DIR_FORMAT+"/"+NAME_OF_ERR_LOG+".log", y, m, d)
-	err := os.Rename(PATH_OF_ERR_LOG, newLocation)
+	newLocation := fmt.Sprintf(PATH_OF_LOGS+DIR_FORMAT+"/logs.zip", y, m, d)
+	err := os.Rename(PATH_OF_LOGS+"logs.zip", newLocation)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	newLocation = fmt.Sprintf(PATH_OF_LOGS+DIR_FORMAT+"/"+NAME_OF_ACC_LOG+".log", y, m, d)
-	err = os.Rename(PATH_OF_ACC_LOG, newLocation)
-	if err != nil {
-		log.Fatal(err)
-	}
+	os.Remove(PATH_OF_ERR_LOG)
+	os.Remove(PATH_OF_REQUEST_LOG)
 
 	fmt.Println("log files were moved successfully.")
 }
 
-func compressFile(path string) {
+func compressFiles() {
 	fmt.Println("creating zip archive.")
 
 	archive, err := os.Create(PATH_OF_LOGS + "logs.zip")
 	if err != nil {
 		panic(err)
-		// this is to catch errors if any
 	}
-
 	defer archive.Close()
 	fmt.Println("archive file created successfully")
 
 	//Create a new zip writer
 	zipWriter := zip.NewWriter(archive)
-	fmt.Println("opening first file")
 
-	f1, err := os.Open(path)
-
+	fmt.Println("opening error log")
+	file, err := os.Open(PATH_OF_ERR_LOG)
 	if err != nil {
 		panic(err)
 	}
+	defer file.Close()
 
-	defer f1.Close()
-
-	fmt.Println("adding file to archive..")
-	w1, err := zipWriter.Create(path)
-
+	fmt.Println("adding error log to archive..")
+	writerFile, err := zipWriter.Create("error.log")
 	if err != nil {
 		panic(err)
 	}
+	if _, err := io.Copy(writerFile, file); err != nil {
+		panic(err)
+	}
 
-	if _, err := io.Copy(w1, f1); err != nil {
+	fmt.Println("opening ssl_request log")
+	file, err = os.Open(PATH_OF_REQUEST_LOG)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	fmt.Println("adding request log to archive..")
+	writerFile, err = zipWriter.Create("ssl_request.log")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := io.Copy(writerFile, file); err != nil {
 		panic(err)
 	}
 
