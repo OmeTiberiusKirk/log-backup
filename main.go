@@ -20,15 +20,15 @@ const PATH_OF_REQUEST_LOG = PATH_OF_LOGS + NAME_OF_REQUEST_LOG + ".log"
 const DIR_FORMAT = "%[1]d/%[2]d/%[3]d"
 
 func main() {
-	fmt.Println("Scheduling log backup.")
+	fmt.Println("Schedule logs backup.")
+
 	// create a scheduler
 	s, err := gocron.NewScheduler()
-
-	// handleLogs()
-
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// handleLogs()
 
 	// add a job to the scheduler
 	j, err := s.NewJob(
@@ -78,8 +78,8 @@ func handleLogs() {
 		fmt.Println("httpd stopped.")
 	}
 
-	compressFiles()
-	createDateDirectories()
+	createZip()
+	createDirectories()
 	moveZipFile()
 
 	cmd = exec.Command("httpd", "-k", "start")
@@ -102,7 +102,7 @@ func checkExistence(path string) (bool, error) {
 	return false, err
 }
 
-func createDateDirectories() {
+func createDirectories() {
 	y, m, d := getDate()
 
 	err := os.MkdirAll(fmt.Sprintf(PATH_OF_LOGS+DIR_FORMAT, y, m, d), 0755)
@@ -131,30 +131,28 @@ func moveZipFile() {
 	os.Remove(PATH_OF_ERR_LOG)
 	os.Remove(PATH_OF_REQUEST_LOG)
 
-	fmt.Println("log files were moved successfully.")
+	fmt.Println("move zip file.")
 }
 
-func compressFiles() {
-	fmt.Println("creating zip archive.")
+func createZip() {
+	fmt.Println("create zip.")
 
 	archive, err := os.Create(PATH_OF_LOGS + "logs.zip")
 	if err != nil {
 		panic(err)
 	}
 	defer archive.Close()
-	fmt.Println("archive file created successfully")
 
 	//Create a new zip writer
 	zipWriter := zip.NewWriter(archive)
 
-	fmt.Println("opening error log")
 	file, err := os.Open(PATH_OF_ERR_LOG)
 	if err != nil {
 		panic(err)
 	}
 	defer file.Close()
 
-	fmt.Println("adding error log to archive..")
+	fmt.Println("add error log to zip..")
 	writerFile, err := zipWriter.Create("error.log")
 	if err != nil {
 		panic(err)
@@ -163,13 +161,12 @@ func compressFiles() {
 		panic(err)
 	}
 
-	fmt.Println("opening ssl_request log")
 	file, err = os.Open(PATH_OF_REQUEST_LOG)
 	if err != nil {
 		panic(err)
 	}
 	defer file.Close()
-	fmt.Println("adding request log to archive..")
+	fmt.Println("add request log to zip..")
 	writerFile, err = zipWriter.Create("ssl_request.log")
 	if err != nil {
 		panic(err)
@@ -178,6 +175,5 @@ func compressFiles() {
 		panic(err)
 	}
 
-	fmt.Println("closing archive")
 	zipWriter.Close()
 }
